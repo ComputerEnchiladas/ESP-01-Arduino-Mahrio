@@ -1,15 +1,13 @@
-#ifndef __ESP8266_H__
-#define __ESP8266_H__
 
 #include <Arduino.h>
 #include <SoftwareSerial.h>
 #define _ESP_RXPIN_ 2
 #define _ESP_TXPIN_ 3
-#define BAUDRATE    115200
+#define BAUDRATE    9600
+String MODE = "1";
 String SSID = "<wifi-router-name>";
 String PASSWORD = "<wifi-router-password>";
-String MODE = "1";
-String SERVER = "192.168.0.5";
+String SERVER = "192.168.X.XXX";
 String PORT = "6085";
 String PATH = "/api/monitor";
 int count = 0;
@@ -20,20 +18,16 @@ void setup() {
   Serial.begin(BAUDRATE);
   Serial.println("DEBUGGER");
   esp.begin(BAUDRATE);
-  esp.flush();
-  esp.println("AT+RST");
-  esp.flush();
-  
-  ESP_Mode();
-  ESP_AccessPoint();
-  delay(3000);
-  ESP_ObtainIP();
+  sendData("AT+RST\r\n",2000, 1);
+  sendData("AT+CWMODE=" + MODE + "\r\n",1000, 1);
+  sendData("AT+CWJAP=\"" + SSID + "\",\"" + PASSWORD + "\"\r\n", 3000, 1);
+  sendData("AT+CIFSR\r\n", 5000, 1);
   isReady = true;
 }
 
 void loop() {
   String http;
-  String json = "[{\"key\": \"" + MODE + "\"}]";
+  String json = "[{\"key\": \"" + MODE + "\"}]\r\n";
   http = "POST " + PATH + " HTTP/1.1\r\n";
   http += "Host:"+SERVER+"\r\n";
   http += "Content-Length:" + String(json.length()) + "\r\n";
@@ -41,50 +35,30 @@ void loop() {
   http += json;
   
   if( isReady ) {
-    ESP_Send( http );
+    Serial.println( "\n\n\n\n" + String(count++) + ": Sending data...");
+    sendData( "AT+CIPSTART=\"TCP\",\"" + SERVER + "\"," + PORT + "\r\n", 1000, 1 );
+    sendData( "AT+CIPSEND=" + String( http.length() ) + "\r\n", 500, 1);
+    sendData( http, 1000, 1);
   }
   delay(1000);
 }
-
-void ESP_Mode( ) {
-  esp.print("AT+CWMODE=");
-  esp.println( MODE);
-  esp.flush();
-  delay(500);
+String sendData(String command, const int timeout, boolean debug)
+{
+  String response = "";
+  esp.print(command);
+  long int time = millis();
+  while( (time+timeout) > millis())
+  {
+    while(esp.available())
+    {
+      char c = esp.read(); // read the next character.
+      response+=c;
+    }  
+  }
+  
+  if(debug)
+  {
+    Serial.print(response); //displays the esp response messages in arduino Serial monitor
+  }
+  return response;
 }
-void ESP_AccessPoint( ){
-  esp.print("AT+CWJAP=");
-  esp.print("\"");
-  esp.print(SSID);
-  esp.print("\"");
-  esp.print(",");
-  esp.print("\"");
-  esp.print(PASSWORD);
-  esp.println("\"");
-  esp.flush();
-  delay(1000);
-}
-void ESP_ObtainIP( ){
-  esp.flush();
-  esp.println("AT+CIFSR");
-}
-void ESP_Send( String val ){
-  Serial.println(String(count++) + ": Sending data...");
-  esp.flush();
-  esp.print("AT+CIPSTART=");
-  esp.print("\"TCP\"");
-  esp.print(",");
-  esp.print("\"");
-  esp.print(SERVER);
-  esp.print("\"");
-  esp.print(",");
-  esp.println(PORT);
-  delay(400);
-  esp.flush();
-  esp.print("AT+CIPSEND=");
-  esp.println(val.length());
-  delay(100);
-  esp.print(val);
-  esp.flush();
-}
-#endif
